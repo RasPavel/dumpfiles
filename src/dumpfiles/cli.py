@@ -3,7 +3,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Iterable, List, Tuple
+from typing import IO, Iterable, List, Tuple
 
 EXCLUDE_DIRS = {".git", "__pycache__", ".venv"}
 
@@ -126,24 +126,32 @@ def open_clipboard_proc() -> subprocess.Popen:
     raise SystemExit(1)
 
 
+def _write_files_to_stream(files: List[Path], stream: IO[bytes]) -> int:
+    """
+    Write headers + file contents to a stream.
+    Returns the number of newline characters found in file contents.
+    """
+    total_lines = 0
+    print("The following files will be processed:")
+    for p in files:
+        print(str(p))
+        header = f"\n===== {p} =====\n".encode("utf-8", "replace")
+        stream.write(header)
+        with p.open("rb") as f:
+            for chunk in iter(lambda: f.read(1 << 16), b""):
+                stream.write(chunk)
+                total_lines += chunk.count(b"\n")
+    return total_lines
+
+
 def write_to_clipboard(files: List[Path]) -> int:
     """
     Stream headers + file contents to a clipboard process.
     Returns the number of newline characters found in file contents.
     """
     proc = open_clipboard_proc()
-    total_lines = 0
-
     assert proc.stdin is not None
-
-    for p in files:
-        header = f"\n===== {p} =====\n".encode("utf-8", "replace")
-        proc.stdin.write(header)
-        with p.open("rb") as f:
-            for chunk in iter(lambda: f.read(1 << 16), b""):
-                proc.stdin.write(chunk)
-                total_lines += chunk.count(b"\n")
-
+    total_lines = _write_files_to_stream(files, proc.stdin)
     proc.stdin.close()
     proc.wait()
     return total_lines
@@ -151,19 +159,8 @@ def write_to_clipboard(files: List[Path]) -> int:
 
 def write_to_file(files: List[Path], output: Path) -> int:
     """Write headers + file contents into a single output file."""
-    total_lines = 0
-
     with output.open("wb") as out:
-        for p in files:
-            header = f"\n===== {p} =====\n".encode("utf-8", "replace")
-            out.write(header)
-
-            with p.open("rb") as f:
-                for chunk in iter(lambda: f.read(1 << 16), b""):
-                    out.write(chunk)
-                    total_lines += chunk.count(b"\n")
-
-    return total_lines
+        return _write_files_to_stream(files, out)
 
 
 def _run(argv: List[str]) -> int:
@@ -186,6 +183,12 @@ def _run(argv: List[str]) -> int:
 
     # If user requested output to a file → skip clipboard
     if output_file:
+        # Exclude the output file from the list of files to be processed.
+        files = [f for f in files if not f.samefile(output_file)]
+        if not files:
+            print("No matching files (after excluding output file).", file=sys.stderr)
+            return 1
+
         total_lines = write_to_file(files, output_file)
         print(
             f"Wrote {len(files)} files, {total_lines} lines to {output_file}",
