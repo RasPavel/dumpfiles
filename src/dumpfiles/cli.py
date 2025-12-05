@@ -49,16 +49,29 @@ def walk_files(root: Path) -> Iterable[Path]:
             yield Path(dirpath) / name
 
 
-def parse_args(argv: List[str]) -> Tuple[Path, str, bool]:
+def parse_args(argv: List[str]) -> Tuple[Path, str, bool, Path | None]:
     """
-    Returns (root_or_file, pattern, single_file_mode).
-    Rules:
-      - If first arg is an existing file -> single_file_mode True
-      - If first arg is an existing dir:
-            root = that dir; pattern = argv[1] if given else "*"
-      - Otherwise:
-            root = "."; pattern = argv[0]  (quote patterns in the shell)
+    Returns (root_or_file, pattern, single_file_mode, output_file).
+    Supports --output FILE or -o FILE.
     """
+    output_file: Path | None = None
+
+    # Handle --output/-o anywhere in args
+    cleaned = []
+    it = iter(enumerate(argv))
+    for i, arg in it:
+        if arg in ("--output", "-o"):
+            try:
+                output_file = Path(argv[i + 1])
+            except IndexError:
+                print("Error: --output requires a file path.", file=sys.stderr)
+                raise SystemExit(2)
+            next(it)  # skip the filename
+        else:
+            cleaned.append(arg)
+
+    argv = cleaned
+
     if not argv or argv[0] in {"-h", "--help", "help"}:
         print_help()
         raise SystemExit(0)
@@ -66,12 +79,12 @@ def parse_args(argv: List[str]) -> Tuple[Path, str, bool]:
     first = Path(argv[0])
 
     if first.is_file():
-        return first, "", True
+        return first, "", True, output_file
 
     if first.is_dir():
         root = first
         pattern = argv[1] if len(argv) >= 2 else "*"
-        return root, pattern, False
+        return root, pattern, False, output_file
 
     # Treat the first arg as a pattern scoped to "."
     if len(argv) >= 2:
@@ -80,7 +93,8 @@ def parse_args(argv: List[str]) -> Tuple[Path, str, bool]:
             file=sys.stderr,
         )
         raise SystemExit(2)
-    return Path("."), argv[0], False
+
+    return Path("."), argv[0], False, output_file
 
 
 def open_clipboard_proc() -> subprocess.Popen:
@@ -135,9 +149,26 @@ def write_to_clipboard(files: List[Path]) -> int:
     return total_lines
 
 
+def write_to_file(files: List[Path], output: Path) -> int:
+    """Write headers + file contents into a single output file."""
+    total_lines = 0
+
+    with output.open("wb") as out:
+        for p in files:
+            header = f"\n===== {p} =====\n".encode("utf-8", "replace")
+            out.write(header)
+
+            with p.open("rb") as f:
+                for chunk in iter(lambda: f.read(1 << 16), b""):
+                    out.write(chunk)
+                    total_lines += chunk.count(b"\n")
+
+    return total_lines
+
+
 def _run(argv: List[str]) -> int:
     """Internal main, parameterized for testability."""
-    target, pattern, single_file_mode = parse_args(argv)
+    target, pattern, single_file_mode, output_file = parse_args(argv)
 
     files: List[Path] = []
 
@@ -146,7 +177,6 @@ def _run(argv: List[str]) -> int:
             files.append(target)
     else:
         for p in walk_files(target):
-            # match on filename only (predictable)
             if fnmatch.fnmatch(p.name, pattern) and not is_binary(p):
                 files.append(p)
 
@@ -154,6 +184,16 @@ def _run(argv: List[str]) -> int:
         print("No matching files.", file=sys.stderr)
         return 1
 
+    # If user requested output to a file → skip clipboard
+    if output_file:
+        total_lines = write_to_file(files, output_file)
+        print(
+            f"Wrote {len(files)} files, {total_lines} lines to {output_file}",
+            file=sys.stderr,
+        )
+        return 0
+
+    # Default: write to clipboard
     total_lines = write_to_clipboard(files)
     print(
         f"Copied {len(files)} files, {total_lines} lines to clipboard.",
