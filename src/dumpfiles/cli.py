@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 from typing import IO, Iterable, List, Tuple
 
-EXCLUDE_DIRS = {".git", "__pycache__", ".venv"}
+EXCLUDE_DIRS = {".git", "__pycache__", ".venv", ".ipynb_checkpoints"}
 
 USAGE = """\
 dumpfiles — copy file contents (with per-file headers) to the system clipboard,
