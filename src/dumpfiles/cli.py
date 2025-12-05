@@ -185,7 +185,12 @@ def _run(argv: List[str]) -> int:
     # If user requested output to a file → skip clipboard
     if output_file:
         # Exclude the output file from the list of files to be processed.
-        files = [f for f in files if not f.samefile(output_file)]
+        # To avoid FileNotFoundError with samefile, resolve paths first.
+        # An output file that doesn't exist can't be in the input list.
+        if output_file.exists():
+            output_file_abs = output_file.resolve()
+            files = [f for f in files if f.resolve() != output_file_abs]
+
         if not files:
             print("No matching files (after excluding output file).", file=sys.stderr)
             return 1
