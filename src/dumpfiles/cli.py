@@ -28,6 +28,7 @@ Help:
 
 
 def print_help() -> None:
+    print("v0.1.1")
     print(USAGE)
 
 

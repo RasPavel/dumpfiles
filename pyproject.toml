@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dumpfiles"
-version = "0.1.0"
+version = "0.1.1"
 description = "Copy multiple text files to the clipboard with per-file headers."
 readme = "README.md"
 requires-python = ">=3.8"
