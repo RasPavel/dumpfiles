@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dumpfiles"
+version = "0.1.0"
+description = "Copy multiple text files to the clipboard with per-file headers."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [
+  { name = "Your Name", email = "you@example.com" }
+]
+
+# No runtime deps needed; clipboard handled via external binaries (pbcopy/xclip/etc.)
+
+[project.scripts]
+dumpfiles = "dumpfiles.cli:main"
